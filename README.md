@@ -17,16 +17,16 @@ Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
 
 ```
 ┌──────────────────────┬──┬────────────────────────────┐
-│    左侧 50%          │  │      右侧 50%              │
+│    左侧 50%           │  │      右侧 50%              │
 │                      │  │                            │
-│  CPU  内存  磁盘 SWAP│  │  [Gateway 日志] [Web 日志] │
+│  CPU  内存  磁盘 SWAP │  │  [Gateway 日志] [Web 日志] │
 │  ████  ████  ██  ██  │  │                            │
 │                      │  │  2025-01-01 12:00:00 ...   │
-│  ┌─CPU趋势──┐┌内存──┐│  │  2025-01-01 12:00:01 ...   │
+│  ┌─CPU趋势──┐ ┌内存──┐│  │  2025-01-01 12:00:01 ...   │
 │  │  📈     ││ 📈   ││  │  2025-01-01 12:00:02 ...   │
 │  └─────────┘ └──────┘│  │                            │
 │                      │  │                            │
-│  PID  名称  CPU RSS  │  │                            │
+│  PID  名称  CPU RSS   │  │                            │
 │  123  hermes 5% 200M │  │                            │
 │  456  python  2% 80M │  │                            │
 │  789  node    1% 50M │  │                            │
@@ -147,4 +147,4 @@ powershell -ExecutionPolicy Bypass -File "C:\Users\77630\port_forward_hermes.ps1
 | 仓库 | 说明 |
 |------|------|
 | [Hermes_Monitoring](https://github.com/yuchen1017918/Hermes_Monitoring) | 统一监控面板 |
-| [Hermes_Process](https://github.com/yuchen1017918/Hermes_Process) | ~~已合并，不再维护~~ |
+| ~~[Hermes_Process](https://github.com/yuchen1017918/Hermes_Process)~~ | 已合并，不再维护 |
