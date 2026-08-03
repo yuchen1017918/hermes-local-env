@@ -148,6 +148,37 @@ def run_port_forward():
     return {"ok": r["ok"], "stdout": r["stdout"][-500:]}
 
 
+def exec_terminal(term, cmd):
+    """在指定终端执行命令。term: powershell/cmd/wsl"""
+    if term == "powershell":
+        # 用 PowerShell 直接调用，避免 cmd 嵌套引号问题
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", cmd],
+            capture_output=True, timeout=30, cwd="/mnt/c/Users/77630"
+        )
+        stdout = r.stdout.decode("utf-8", errors="replace").strip()
+        stderr = r.stderr.decode("utf-8", errors="replace").strip()
+        ok = r.returncode == 0
+    elif term == "cmd":
+        r = run_cmd(f'cmd.exe /c "chcp 65001 >nul && {cmd}"', timeout=30)
+        stdout = r["stdout"]
+        stderr = r["stderr"]
+        ok = r["ok"]
+    elif term == "wsl":
+        r = run_cmd(f'bash -c "{cmd}"', timeout=30)
+        stdout = r["stdout"]
+        stderr = r["stderr"]
+        ok = r["ok"]
+    else:
+        return {"ok": False, "stdout": "", "stderr": f"未知终端: {term}"}
+
+    return {
+        "ok": ok,
+        "stdout": stdout[-8000:],
+        "stderr": stderr[-2000:],
+    }
+
+
 class DiagHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -204,6 +235,20 @@ class DiagHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"status": "ok"})
             return
 
+        self._send_json({"error": "Not Found"}, 404)
+
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/api/terminal":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            term = body.get("term", "wsl")
+            cmd = body.get("cmd", "")
+            if not cmd.strip():
+                self._send_json({"ok": False, "stdout": "", "stderr": "命令不能为空"}, 400)
+                return
+            self._send_json(exec_terminal(term, cmd))
+            return
         self._send_json({"error": "Not Found"}, 404)
 
 

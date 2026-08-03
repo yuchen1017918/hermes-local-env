@@ -65,6 +65,30 @@
   .footer{background:#1a1f2b;border-top:1px solid var(--border);padding:4px 14px;font-size:10px;color:var(--dim);text-align:center;flex-shrink:0}
   #spinner{display:none;text-align:center;padding:10px;color:var(--accent);font-size:12px}
 
+  /* Terminal */
+  .term-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+  .term-tab{
+    padding:6px 12px;font-size:10px;font-weight:600;cursor:pointer;border:none;
+    background:none;color:var(--dim);border-bottom:2px solid transparent;transition:all .15s
+  }
+  .term-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .term-input{
+    display:flex;gap:6px;padding:6px 0
+  }
+  .term-input input{
+    flex:1;background:#0003;border:1px solid var(--border);color:var(--text);
+    padding:6px 10px;border-radius:5px;font-family:monospace;font-size:11px;outline:none
+  }
+  .term-input input:focus{border-color:var(--accent)}
+  .term-output{
+    background:#0003;border:1px solid var(--border);border-radius:6px;
+    padding:8px;font-family:monospace;font-size:10px;color:var(--dim);
+    max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:6px
+  }
+  .term-output .cmd{color:var(--accent)}
+  .term-output .out{color:var(--text)}
+  .term-output .err-text{color:var(--red)}
+
   @media(max-width:768px){
     .row .name{width:60px;font-size:11px}
     .card{padding:10px}
@@ -104,6 +128,20 @@
         ① WSL_Start_Hermes → ② Hermes_Port_Forward → ③ 验证端口
       </span>
     </div>
+  </div>
+
+  <div class="card">
+    <h3>💻 终端</h3>
+    <div class="term-tabs" id="termTabs">
+      <button class="term-tab active" data-term="powershell">PowerShell</button>
+      <button class="term-tab" data-term="cmd">CMD</button>
+      <button class="term-tab" data-term="wsl">WSL</button>
+    </div>
+    <div class="term-input">
+      <input type="text" id="termInput" placeholder="输入命令..." onkeydown="if(event.key==='Enter')execTerm()">
+      <button class="btn-sm" onclick="execTerm()" style="min-height:30px;font-size:11px">执行</button>
+    </div>
+    <div class="term-output" id="termOutput"></div>
   </div>
 
   <div id="spinner">⏳ 执行中...</div>
@@ -214,6 +252,48 @@ async function repairSingle(port) {
 
 refreshStatus();
 setInterval(refreshStatus, 10000);
+
+// ===== Terminal =====
+let currentTerm = 'powershell';
+
+// Tab switching
+$('termTabs').addEventListener('click', e => {
+  const btn = e.target.closest('.term-tab');
+  if (!btn) return;
+  document.querySelectorAll('.term-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  currentTerm = btn.dataset.term;
+  $('termInput').focus();
+});
+
+async function execTerm() {
+  const input = $('termInput');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+
+  const out = $('termOutput');
+  out.innerHTML += `<div class="cmd">$ ${cmd}</div>`;
+  out.scrollTop = out.scrollHeight;
+
+  try {
+    const r = await fetch('/api/terminal', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({term: currentTerm, cmd})
+    });
+    const d = await r.json();
+    if (d.stdout) out.innerHTML += `<div class="out">${escHtml(d.stdout)}</div>`;
+    if (d.stderr) out.innerHTML += `<div class="err-text">${escHtml(d.stderr)}</div>`;
+  } catch(e) {
+    out.innerHTML += `<div class="err-text">错误: ${e}</div>`;
+  }
+  out.scrollTop = out.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 </script>
 </body>
 </html>
