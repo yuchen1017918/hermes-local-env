@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
+<title>Hermes 监控</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117;--card:#161b22;--border:#30363d;
+    --text:#c9d1d9;--dim:#8b949e;--accent:#58a6ff;
+    --green:#3fb950;--yellow:#d2991d;--red:#f85149;--orange:#db6d28;
+    --header-bg:#1a1f2b;--touch-min:44px
+  }
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:-apple-system,'Segoe UI','JetBrains Mono',monospace;
+    background:var(--bg);color:var(--text);
+    -webkit-tap-highlight-color:transparent
+  }
+
+  /* ===== Split Layout ===== */
+  .split{display:flex;height:100vh}
+  .left-panel{
+    width:50%;min-width:220px;display:flex;flex-direction:column;overflow:hidden
+  }
+  .right-panel{
+    flex:1;min-width:220px;display:flex;flex-direction:column;overflow:hidden
+  }
+  /* Resizer */
+  .resizer{
+    width:4px;cursor:col-resize;background:var(--border);flex-shrink:0;
+    transition:background .15s;position:relative;z-index:10
+  }
+  .resizer:hover,.resizer.active{background:var(--accent)}
+  .resizer::after{
+    content:'';position:absolute;top:0;left:-4px;right:-4px;bottom:0
+  }
+
+  /* ===== Header ===== */
+  .header{
+    background:var(--header-bg);border-bottom:1px solid var(--border);
+    padding:6px 12px;display:flex;align-items:center;gap:8px;
+    flex-shrink:0;min-height:38px
+  }
+  .header .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .header .title{font-size:12px;font-weight:700;color:var(--accent)}
+  .spacer{flex:1}
+
+  /* ===== Gauges ===== */
+  .gauges{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+    background:var(--border);flex-shrink:0
+  }
+  .gauge{
+    background:var(--card);padding:8px 6px;text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:2px
+  }
+  .gauge .label{font-size:9px;color:var(--dim);text-transform:uppercase}
+  .gauge .value{font-size:18px;font-weight:700}
+  .gauge .sub{font-size:8px;color:var(--dim)}
+  .gauge .bar-bg{width:100%;height:2px;background:rgba(255,255,255,.08);border-radius:1px;margin-top:2px}
+  .gauge .bar-fill{height:100%;border-radius:1px;transition:width .4s,background .4s}
+
+  /* ===== Process Table ===== */
+  .proc-wrap{
+    flex:1;overflow:hidden;display:flex;flex-direction:column
+  }
+  .proc-header{
+    background:var(--card);border-bottom:1px solid var(--border);
+    padding:4px 10px;font-size:10px;color:var(--dim);display:flex;align-items:center;gap:6px;
+    min-height:28px;flex-shrink:0
+  }
+  .proc-header .count{color:var(--accent)}
+  .proc-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .proc-list::-webkit-scrollbar{width:4px}
+  .proc-list::-webkit-scrollbar-thumb{background:#383e47;border-radius:2px}
+  .proc-row{
+    display:grid;grid-template-columns:50px 1fr 50px 55px 55px 40px;align-items:center;
+    padding:3px 8px;font-size:10px;border-bottom:1px solid rgba(48,54,61,.3);gap:4px
+  }
+  .proc-row:hover{background:rgba(88,166,255,.04)}
+  .proc-row .pid{color:var(--accent);font-weight:600}
+  .proc-row .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .proc-row .cpu{text-align:right;font-weight:600}
+  .proc-row .mem{text-align:right;color:var(--dim)}
+  .proc-row .status{text-align:center}
+  .proc-row .act{text-align:center}
+  .btn-kill{background:none;border:1px solid var(--red);color:var(--red);padding:0 6px;border-radius:3px;cursor:pointer;font-size:9px;height:20px}
+  .btn-kill:active{background:var(--red);color:#fff}
+  .btn-run{background:none;border:1px solid var(--green);color:var(--green);padding:0 6px;border-radius:3px;cursor:pointer;font-size:9px;height:20px}
+  .btn-run:active{background:var(--green);color:#000}
+
+  /* ===== Logs (right panel) ===== */
+  .log-tabs{
+    display:flex;flex-shrink:0;background:var(--header-bg);
+    border-bottom:1px solid var(--border)
+  }
+  .log-tab{
+    flex:1;padding:8px 12px;text-align:center;cursor:pointer;
+    font-size:11px;font-weight:600;color:var(--dim);border:none;background:none;
+    border-bottom:2px solid transparent;transition:all .15s;min-height:var(--touch-min);
+    display:flex;align-items:center;justify-content:center;gap:6px
+  }
+  .log-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .log-tab .badge{font-size:9px;background:rgba(88,166,255,.12);color:var(--accent);padding:1px 6px;border-radius:8px}
+
+  .log-ctrl{
+    padding:4px 10px;background:var(--card);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);flex-shrink:0
+  }
+  .log-ctrl button{
+    border:1px solid var(--border);background:var(--card);color:var(--text);
+    padding:3px 10px;border-radius:4px;cursor:pointer;font-size:10px;
+    transition:all .12s;min-height:28px
+  }
+  .log-ctrl button:active{background:#21262d}
+  .log-ctrl select{
+    background:var(--card);color:var(--text);border:1px solid var(--border);
+    padding:2px 6px;border-radius:4px;font-size:10px
+  }
+  .log-content{
+    flex:1;overflow-y:auto;padding:6px 10px;font-size:10px;
+    font-family:'JetBrains Mono','Cascadia Code','Consolas',monospace;
+    line-height:1.5;white-space:pre-wrap;word-break:break-all;
+    -webkit-overflow-scrolling:touch
+  }
+  .log-content::-webkit-scrollbar{width:4px}
+  .log-content::-webkit-scrollbar-thumb{background:#383e47;border-radius:2px}
+  .log-content .line{padding:1px 0}
+  .log-content .line .time{color:var(--dim);margin-right:8px;user-select:none}
+  .log-line-warn{color:var(--yellow)}
+  .log-line-err{color:var(--red)}
+
+  .chart-row{
+    display:flex;gap:1px;background:var(--border);flex-shrink:0;height:100px
+  }
+  .chart-box{flex:1;background:var(--card);position:relative;overflow:hidden}
+  .chart-box canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+
+  /* ===== Responsive ===== */
+  @media(max-width:768px){
+    .split{flex-direction:column}
+    .left-panel{width:100%;min-width:0;height:50%;border-bottom:1px solid var(--border)}
+    .right-panel{height:50%}
+    .resizer{display:none}
+    .gauges{grid-template-columns:repeat(2,1fr)}
+    .gauge .value{font-size:15px}
+    .proc-row{grid-template-columns:38px 1fr 38px 40px;font-size:9px}
+    .proc-row .mem{display:none}
+    .proc-row .status{display:none}
+    .chart-row{height:70px}
+  }
+</style>
+</head>
+<body>
+
+<div class="split">
+  <!-- ===== LEFT: Process Monitor ===== -->
+  <div class="left-panel">
+    <div class="header">
+      <span class="dot" id="sysDot"></span>
+      <span class="title">Hermes 监控</span>
+      <span class="spacer"></span>
+      <span class="uptime" id="uptime" style="font-size:10px;color:var(--dim)"></span>
+    </div>
+
+    <!-- Gauges -->
+    <div class="gauges" id="gauges">
+      <div class="gauge"><span class="label">CPU</span><span class="value" id="gCpu">-</span><span class="sub" id="gCpuFreq"></span><div class="bar-bg"><div class="bar-fill" id="gCpuBar"></div></div></div>
+      <div class="gauge"><span class="label">内存</span><span class="value" id="gMem">-</span><span class="sub" id="gMemTotal"></span><div class="bar-bg"><div class="bar-fill" id="gMemBar"></div></div></div>
+      <div class="gauge"><span class="label">磁盘</span><span class="value" id="gDisk">-</span><span class="sub" id="gDiskTotal"></span><div class="bar-bg"><div class="bar-fill" id="gDiskBar"></div></div></div>
+      <div class="gauge"><span class="label">SWAP</span><span class="value" id="gSwap">-</span><span class="sub" id="gSwapTotal"></span><div class="bar-bg"><div class="bar-fill" id="gSwapBar"></div></div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="cpuChart"></canvas></div>
+      <div class="chart-box"><canvas id="memChart"></canvas></div>
+    </div>
+
+    <!-- Process Table -->
+    <div class="proc-wrap">
+      <div class="proc-header"><span>进程</span><span class="count" id="procCount">0</span><span class="spacer"></span><span class="btn-run" onclick="refreshAll()" style="border-color:var(--accent);color:var(--accent)">刷新</span></div>
+      <div class="proc-header" style="grid-template-columns:50px 1fr 50px 55px 55px 40px;display:grid;padding:2px 8px;font-size:9px">
+        <span>PID</span><span>名称</span><span>CPU%</span><span>RSS</span><span>状态</span><span></span>
+      </div>
+      <div class="proc-list" id="procList"></div>
+    </div>
+  </div>
+  <div class="resizer" id="resizer"></div>
+
+  <!-- ===== RIGHT: Logs ===== -->
+  <div class="right-panel">
+    <div class="log-tabs">
+      <button class="log-tab active" onclick="switchLog('gateway',this)">
+        Gateway 日志 <span class="badge" id="gwBadge">--</span>
+      </button>
+      <button class="log-tab" onclick="switchLog('web',this)">
+        Web UI 日志 <span class="badge" id="webBadge">--</span>
+      </button>
+      <button class="log-tab" style="flex:0 0 auto;padding:8px 14px" onclick="refreshLog()" title="刷新">🔄</button>
+    </div>
+    <div class="log-ctrl">
+      <select id="logLines" onchange="onLinesChange()">
+        <option value="200">200行</option>
+        <option value="500" selected>500行</option>
+        <option value="1000">1000行</option>
+        <option value="2000">2000行</option>
+      </select>
+      <select id="logFile" onchange="onLogFileChange()">
+        <option value="gateway">Gateway</option>
+        <option value="web">Web UI</option>
+      </select>
+      <input type="text" placeholder="搜索..." style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:10px;width:120px" oninput="onSearch(this.value)">
+      <span class="spacer"></span>
+      <span style="font-size:10px;color:var(--dim)" id="logStatus">--</span>
+    </div>
+    <div class="log-content" id="logContent"></div>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+let currentLog = 'gateway';
+let logCursor = 0;
+let logPollTimer = null;
+let chartData = {cpu:[],mem:[]};
+let charts = null;
+
+// ===== Gauges =====
+function updateGauges(sys) {
+  const c = sys.cpu, m = sys.memory, d = sys.disk;
+  setGauge('gCpu', c.percent, 'gCpuFreq', (c.freq_current/1000).toFixed(1)+'GHz', 'gCpuBar', c.percent);
+  setGauge('gMem', m.percent, 'gMemTotal', m.used_gb+'/'+m.total_gb+'G', 'gMemBar', m.percent);
+  setGauge('gDisk', d.percent, 'gDiskTotal', d.used_gb+'/'+d.total_gb+'G', 'gDiskBar', d.percent);
+  setGauge('gSwap', m.swap_percent, 'gSwapTotal', m.swap_used_gb+'G', 'gSwapBar', m.swap_percent);
+
+  // uptime
+  const h = Math.floor(sys.uptime_seconds/3600);
+  const mi = Math.floor((sys.uptime_seconds%3600)/60);
+  $('uptime').textContent = `up ${h}h${mi}m`;
+}
+
+function setGauge(id, val, subId, subText, barId, barVal) {
+  $(id).textContent = val+'%';
+  $(id).style.color = val>80?'var(--red)':val>60?'var(--yellow)':'var(--green)';
+  $(subId).textContent = subText;
+  const bar = $(barId);
+  bar.style.width = barVal+'%';
+  bar.className = 'bar-fill ' + (barVal>80?'bar-high':barVal>60?'bar-mid':'bar-low');
+}
+
+// ===== Charts =====
+function initCharts() {
+  const common = {
+    type:'line', options:{
+      responsive:true,maintainAspectRatio:false,
+      animation:{duration:300},
+      scales:{
+        x:{display:false},
+        y:{min:0,max:100,ticks:{font:{size:8},color:'#8b949e'},grid:{color:'rgba(48,54,61,.3)'}}
+      },
+      plugins:{legend:{display:false}}
+    }
+  };
+
+  charts = {
+    cpu: new Chart($('cpuChart'),{...common,data:{labels:[],datasets:[{data:[],borderColor:'#58a6ff',borderWidth:1.5,pointRadius:0,tension:.3}]}}),
+    mem: new Chart($('memChart'),{...common,data:{labels:[],datasets:[{data:[],borderColor:'#3fb950',borderWidth:1.5,pointRadius:0,tension:.3}]}})
+  };
+}
+
+function pushChart(sys) {
+  if(!charts) return;
+  const t = new Date().toLocaleTimeString();
+  for(let k of ['cpu','mem']){
+    const c = charts[k];
+    c.data.labels.push(t);
+    const val = k==='cpu'?sys.cpu.percent:sys.memory.percent;
+    c.data.datasets[0].data.push(val);
+    if(c.data.labels.length>60){c.data.labels.shift();c.data.datasets[0].data.shift()}
+    c.update('none');
+  }
+}
+
+// ===== Process Table =====
+function updateProcs(procs) {
+  $('procCount').textContent = procs.length;
+  $('procList').innerHTML = procs.map(p=>`
+    <div class="proc-row">
+      <span class="pid">${p.pid}</span>
+      <span class="name" title="${esc(p.cmdline||p.name)}">${p.name}</span>
+      <span class="cpu" style="color:${p.cpu_percent>50?'var(--red)':p.cpu_percent>20?'var(--yellow)':'var(--text)'}">${p.cpu_percent}%</span>
+      <span class="mem">${p.mem_rss_mb}M</span>
+      <span class="status">${p.status}</span>
+      <span class="act">${p.status==='running'?`<button class="btn-kill" onclick="killProc(${p.pid})">⏹</button>`:`<button class="btn-run" onclick="runProc('${esc(p.cmdline)}')">▶</button>`}</span>
+    </div>
+  `).join('');
+}
+
+// ===== Logs =====
+function switchLog(file, btn) {
+  currentLog = file;
+  document.querySelectorAll('.log-tab').forEach(t=>t.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  $('logFile').value = file;
+  logCursor = 0;
+  fetchLog();
+}
+
+function onLinesChange() { logCursor=0; fetchLog(); }
+function onLogFileChange() { switchLog($('logFile').value); }
+
+async function fetchLog() {
+  const max = $('logLines').value||500;
+  const resp = await fetch(`/api/tail?file=${currentLog}&cursor=${logCursor}&max_lines=${max}`);
+  const d = await resp.json();
+  if(d.error){$('logContent').innerHTML=`<span style="color:var(--red)">${d.error}</span>`;return}
+
+  if(logCursor===0){
+    $('logContent').innerHTML = d.lines.map(l=>colorLine(l)).join('\n');
+  } else {
+    d.lines.forEach(l=>{
+      const div = document.createElement('div');
+      div.innerHTML = colorLine(l);
+      $('logContent').appendChild(div);
+    });
+  }
+
+  logCursor = d.next_cursor;
+  $('logStatus').textContent = `${d.lines.length}行 | ${(d.file_size/1024/1024).toFixed(1)}MB`;
+  updateBadge(currentLog, d.lines.length);
+
+  // auto-scroll
+  $('logContent').scrollTop = $('logContent').scrollHeight;
+}
+
+function refreshLog() { logCursor=0; fetchLog(); }
+
+function onSearch(q) {
+  const lines = $('logContent').querySelectorAll('.line');
+  lines.forEach(l=>l.style.display = q===''||l.textContent.toLowerCase().includes(q.toLowerCase())?'':'none');
+}
+
+function colorLine(l) {
+  let cls = 'line';
+  if(/error|fail|traceback|exception/i.test(l)) cls+=' log-line-err';
+  else if(/warn|warning/i.test(l)) cls+=' log-line-warn';
+  // try extract timestamp
+  const m = l.match(/^(\d{4}[-\s]\d{2}[-\s]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.,]?\d*)/);
+  if(m) return `<div class="${cls}"><span class="time">${m[1]}</span>${esc(l.slice(m[0].length))}</div>`;
+  return `<div class="${cls}">${esc(l)}</div>`;
+}
+
+function updateBadge(file, n) {
+  const badge = file==='gateway'?$('gwBadge'):$('webBadge');
+  badge.textContent = n+'行';
+  badge.style.color = n>0?'var(--green)':'var(--dim)';
+}
+
+// ===== Actions =====
+async function killProc(pid) {
+  if(!confirm(`kill -9 ${pid}?`)) return;
+  await fetch(`/api/kill?pid=${pid}`);
+  refreshAll();
+}
+
+async function runProc(cmd) {
+  const r = await fetch(`/api/run?cmd=${encodeURIComponent(cmd)}`);
+  const d = await r.json();
+  if(!d.ok) alert('启动失败: '+(d.stderr||d.error));
+  setTimeout(refreshAll, 1500);
+}
+
+// ===== Polling =====
+async function refreshAll() {
+  try {
+    const r = await fetch('/api/all');
+    const d = await r.json();
+    updateGauges(d.system);
+    updateProcs(d.processes);
+    pushChart(d.system);
+  } catch(e) {}
+}
+
+async function logPoll() {
+  if(parseInt($('logLines').value)>0) await fetchLog();
+  setTimeout(logPoll, 2000);
+}
+
+function $ (id){return document.getElementById(id)}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// ===== Resizer =====
+(function(){
+  const resizer = $('resizer'), left = resizer.previousElementSibling;
+  let dragging = false;
+
+  function onDown(e) {
+    dragging = true;
+    resizer.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const splitW = resizer.parentElement.offsetWidth;
+    let pct = (x / splitW * 100);
+    pct = Math.max(20, Math.min(65, pct));
+    left.style.width = pct + '%';
+  }
+
+  function onUp() {
+    dragging = false;
+    resizer.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  resizer.addEventListener('mousedown', onDown);
+  resizer.addEventListener('touchstart', onDown, {passive:false});
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, {passive:false});
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchend', onUp);
+})();
+
+// ===== Init =====
+initCharts();
+refreshAll();
+setInterval(refreshAll, 3000);
+fetchLog();
+logPoll();
+</script>
+</body>
+</html>
