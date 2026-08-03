@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>Hermes 诊断</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--yellow:#d2991d;--red:#f85149}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent}
+
+  .header{background:#1a1f2b;border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;min-height:44px}
+  .header .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .dot-ok{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+  .dot-err{background:var(--red)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .header .title{font-size:14px;font-weight:700;color:var(--accent)}
+  .spacer{flex:1}
+
+  .main{flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
+  .main::-webkit-scrollbar{width:5px}
+  .main::-webkit-scrollbar-track{background:var(--bg)}
+  .main::-webkit-scrollbar-thumb{background:#383e47;border-radius:3px}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px}
+  .card h3{font-size:13px;margin-bottom:10px;color:var(--accent)}
+
+  .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.4)}
+  .row:last-child{border-bottom:none}
+  .row .name{width:80px;font-size:12px;font-weight:600;flex-shrink:0}
+  .row .port{color:var(--dim);font-size:10px;width:36px}
+  .row .icons{display:flex;gap:6px;flex-shrink:0}
+  .badge{font-size:9px;padding:2px 6px;border-radius:8px;text-transform:uppercase}
+  .badge-ok{background:rgba(63,185,80,.15);color:var(--green)}
+  .badge-err{background:rgba(248,81,73,.15);color:var(--red)}
+  .badge-warn{background:rgba(210,153,29,.15);color:var(--yellow)}
+  .row .btn-sm{
+    border:1px solid var(--border);background:var(--card);color:var(--text);
+    padding:3px 10px;border-radius:5px;cursor:pointer;font-size:10px;
+    transition:all .12s;white-space:nowrap
+  }
+  .row .btn-sm:hover{background:#21262d;border-color:var(--dim)}
+  .row .btn-sm:active{transform:scale(.96)}
+
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  .btn{
+    border:1px solid var(--border);background:var(--card);color:var(--text);
+    padding:10px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+    transition:all .12s;display:flex;align-items:center;gap:6px;min-height:44px
+  }
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);color:#000;border-color:var(--accent)}
+  .btn.warn{background:var(--yellow);color:#000;border-color:var(--yellow)}
+  .btn.danger{background:var(--red);color:#fff;border-color:var(--red)}
+  .btn:disabled{opacity:.4;pointer-events:none}
+
+  .log{background:#0003;border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:10px;color:var(--dim);max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:8px;display:none}
+  .log.show{display:block}
+  .log .ok{color:var(--green)} .log .err{color:var(--red)}
+
+  .footer{background:#1a1f2b;border-top:1px solid var(--border);padding:4px 14px;font-size:10px;color:var(--dim);text-align:center;flex-shrink:0}
+  #spinner{display:none;text-align:center;padding:10px;color:var(--accent);font-size:12px}
+
+  @media(max-width:768px){
+    .row .name{width:60px;font-size:11px}
+    .card{padding:10px}
+    .btn{padding:8px 12px;font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="dot dot-err" id="allDot"></span>
+  <span class="title">Hermes 端口诊断</span>
+  <span class="spacer"></span>
+  <span style="font-size:10px;color:var(--dim)" id="wslIpText">WSL: --</span>
+</div>
+
+<div class="main">
+
+  <div class="card" id="statusCard">
+    <h3>📡 端口状态</h3>
+    <div id="portRows">加载中...</div>
+  </div>
+
+  <div class="card">
+    <h3>🔧 操作</h3>
+    <div class="actions">
+      <button class="btn primary" onclick="apiCall('/api/repair-all','修复所有端口')" id="btnRepair" disabled>🔄 修复全部端口</button>
+      <button class="btn warn" onclick="apiCall('/api/repair-wsl','修复WSL网络')" id="btnWsl" disabled>🛜 修复 WSL 网络</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🚀 任务启动</h3>
+    <div class="actions" style="gap:6px">
+      <button class="btn" onclick="runSequence()" id="btnSeq" disabled>▶ 执行任务序列</button>
+      <span style="font-size:10px;color:var(--dim);align-self:center">
+        ① WSL_Start_Hermes → ② Hermes_Port_Forward → ③ 验证端口
+      </span>
+    </div>
+  </div>
+
+  <div id="spinner">⏳ 执行中...</div>
+  <div class="log" id="logBox"></div>
+</div>
+
+<div class="footer">Hermes Port Diagnostic Panel</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const logBox = $('logBox');
+const spinner = $('spinner');
+
+function log(msg, cls='') {
+  logBox.classList.add('show');
+  const t = new Date().toLocaleTimeString();
+  logBox.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`;
+  logBox.scrollTop = logBox.scrollHeight;
+}
+function clearLog() { logBox.innerHTML = ''; logBox.classList.remove('show'); }
+
+async function apiCall(url, label) {
+  const btns = document.querySelectorAll('button');
+  btns.forEach(b => b.disabled = true);
+  spinner.style.display = 'block';
+  log(`▶ ${label}...`, 'ok');
+
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.ok || d.all_ok !== false) {
+      log(`✅ ${label} 完成`, 'ok');
+    } else {
+      log(`⚠ ${label} 部分失败`, 'err');
+    }
+    if (d.note) log(`💡 ${d.note}`, '');
+    return d;
+  } catch(e) {
+    log(`❌ ${label} 异常: ${e}`, 'err');
+    return null;
+  } finally {
+    spinner.style.display = 'none';
+    btns.forEach(b => b.disabled = false);
+    await refreshStatus();
+  }
+}
+
+async function runSequence() {
+  clearLog();
+  log('🚀 开始任务序列...', 'ok');
+
+  log('① 执行 WSL_Start_Hermes...', '');
+  const r1 = await apiCall('/api/start-hermes', 'WSL_Start_Hermes');
+  if (r1) log(r1.stdout || r1.stderr || '完成', '');
+
+  await new Promise(r => setTimeout(r, 2000));
+  log('② 执行 Hermes_Port_Forward...', '');
+  const r2 = await apiCall('/api/port-forward', 'Hermes_Port_Forward');
+  if (r2) log(r2.stdout || '完成', '');
+
+  await new Promise(r => setTimeout(r, 1000));
+  log('③ 修复全部端口转发...', '');
+  await apiCall('/api/repair-all', '修复全部端口');
+
+  log('✅ 任务序列完成', 'ok');
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    $('wslIpText').textContent = 'WSL: ' + (d.wsl_ip || '离线');
+
+    const allOk = d.ports.every(p => p.ok);
+    const dot = $('allDot');
+    dot.className = 'dot ' + (allOk ? 'dot-ok' : 'dot-err');
+
+    $('portRows').innerHTML = d.ports.map(p => `
+      <div class="row">
+        <span class="port">:${p.port}</span>
+        <span class="name">${p.name}</span>
+        <span class="icons">
+          <span class="badge ${p.proxy?'badge-ok':'badge-err'}">PROXY</span>
+          <span class="badge ${p.firewall?'badge-ok':'badge-err'}">FW</span>
+          <span class="badge ${p.http?'badge-ok':'badge-err'}">HTTP</span>
+        </span>
+        <span class="spacer"></span>
+        ${p.ok ? '<span class="badge badge-ok">✅</span>' : '<button class="btn-sm" onclick="repairSingle('+p.port+')">修复</button>'}
+      </div>
+    `).join('');
+
+    $('btnRepair').disabled = false;
+    $('btnWsl').disabled = false;
+    $('btnSeq').disabled = false;
+  } catch(e) {
+    $('portRows').innerHTML = '<div style="color:var(--red)">无法获取状态</div>';
+  }
+}
+
+async function repairSingle(port) {
+  clearLog();
+  const d = await apiCall('/api/repair-all', `修复端口 ${port}`);
+  if (d && d.results) {
+    const r = d.results.find(x => x.port === port);
+    if (r && !r.ok) log(`⚠ 端口 ${port} 修复后仍不可达，请检查 WSL 内服务`, 'err');
+  }
+}
+
+refreshStatus();
+setInterval(refreshStatus, 10000);
+</script>
+</body>
+</html>
