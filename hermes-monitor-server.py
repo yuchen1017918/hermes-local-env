@@ -36,6 +36,145 @@ HERMES_PATTERNS = [
 
 # ========== 系统/进程监控 ==========
 
+# HWiNFO 日志（真实温度源，2s 更新一行 CSV）
+HWINFO_LOG = Path("/mnt/d/Documents/新建 文本文档.txt")
+
+# CPU 温度：WSL 内无 /sys/class/thermal 传感器，改从 Windows 侧读
+# 优先级：HWiNFO 共享内存（官方 API，自动可用） > HWiNFO CSV 日志 > Windows ACPI（估算值兜底）
+_WINDOWS_TEMP_CACHE = {"t": 0.0, "v": None}
+WINDOWS_TEMP_CACHE_TTL = 20  # 秒，避免每次轮询都起 powershell 进程
+_HWINFO_SM_CACHE = {"t": 0.0, "v": None}
+HWINFO_SM_CACHE_TTL = 20  # 秒
+READ_SM_PS1 = r"C:\Users\77630\hwinfo\read_sm.ps1"
+
+
+def get_hwinfo_sm_temps():
+    """读 HWiNFO 共享内存 (Global\\HWiNFO_SENS_SM2) → (cpu_tctl_c, gpu_temp_c)。
+    HWiNFO 勾选"共享内存支持"后自动可用（免费版 12h 限制由外部定时重启续期）。"""
+    now = time.time()
+    if now - _HWINFO_SM_CACHE["t"] < HWINFO_SM_CACHE_TTL:
+        return _HWINFO_SM_CACHE["v"]
+    val = None
+    try:
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", READ_SM_PS1],
+            capture_output=True, text=True, timeout=15,
+        )
+        out = (r.stdout or "").strip()
+        if out and out != "NONE":
+            parts = out.split("|")
+            cpu = float(parts[0]) if parts[0] else None
+            gpu = float(parts[1]) if len(parts) > 1 and parts[1] else None
+            if cpu is not None and 5 <= cpu <= 110:
+                val = (round(cpu, 1), round(gpu, 1) if gpu is not None else None)
+    except Exception:
+        val = None
+    _HWINFO_SM_CACHE.update({"t": now, "v": val})
+    return val
+
+
+def get_hwinfo_temps_csv():
+    """从 HWiNFO CSV 日志读取温度 → (cpu_tctl_c, gpu_temp_c)。
+    表头从文件头部读（只读 8KB），数据只取尾部最后一行（文件会持续增长）。"""
+    try:
+        if not HWINFO_LOG.exists():
+            return None, None
+        # 表头：文件开头 8KB 足够（列名随 HWiNFO 界面语言/顺序可能变化，动态定位）
+        with open(HWINFO_LOG, "rb") as f:
+            head = f.read(8192).decode("utf-8-sig", errors="replace")
+        header = head.splitlines()[0].split(",")
+        cpu_i = gpu_i = None
+        for i, h in enumerate(header):
+            if cpu_i is None and "Tctl" in h:
+                cpu_i = i
+            if gpu_i is None and ("GPU 温度" in h or "GPU Temperature" in h):
+                gpu_i = i
+
+        # 尾部：最后 64KB，取最后一行完整数据
+        size = HWINFO_LOG.stat().st_size
+        with open(HWINFO_LOG, "rb") as f:
+            if size > 65536:
+                f.seek(size - 65536)
+                text = f.read().decode("utf-8", errors="replace")
+            else:
+                text = f.read().decode("utf-8-sig", errors="replace")
+        lines = [l for l in text.splitlines() if l]
+        if not lines:
+            return None, None
+        last = lines[-1].split(",")
+
+        def cell(i):
+            if i is not None and i < len(last):
+                try:
+                    return round(float(last[i].strip().strip('"')), 1)
+                except Exception:
+                    return None
+            return None
+
+        return cell(cpu_i), cell(gpu_i)
+    except Exception:
+        return None, None
+
+
+def get_hwinfo_temps():
+    """HWiNFO 温度总入口：共享内存优先（官方 API），CSV 日志兜底。"""
+    sm = get_hwinfo_sm_temps()
+    if sm and sm[0] is not None:
+        return sm
+    return get_hwinfo_temps_csv()
+
+
+def get_windows_cpu_temp():
+    """读取 Windows ACPI 温度（°C）。Get-Counter 优先，WMI 备选。缓存 20s。"""
+    now = time.time()
+    if now - _WINDOWS_TEMP_CACHE["t"] < WINDOWS_TEMP_CACHE_TTL:
+        return _WINDOWS_TEMP_CACHE["v"]
+
+    def _plausible(c):
+        return c is not None and 5 <= c <= 110
+
+    val = None
+
+    # 方式1: 性能计数器 \Thermal Zone Information\Temperature（单位 K）
+    try:
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "(Get-Counter '\\Thermal Zone Information(*)\\Temperature' "
+             "-ErrorAction SilentlyContinue).CounterSamples.CookedValue"],
+            capture_output=True, text=True, timeout=12,
+        )
+        for tok in re.findall(r"[-+]?\d+\.?\d*", r.stdout or ""):
+            k = float(tok)
+            if 250 < k < 400:
+                c = k - 273.15
+                if _plausible(c):
+                    val = max(val or 0, round(c, 1))
+    except Exception:
+        pass
+
+    # 方式2: WMI MSAcpi_ThermalZoneTemperature（单位 0.1K）
+    if not _plausible(val):
+        try:
+            r = subprocess.run(
+                ["/mnt/c/Windows/System32/wbem/WMIC.exe",
+                 "/namespace:\\\\root\\wmi", "PATH",
+                 "MSAcpi_ThermalZoneTemperature", "get", "CurrentTemperature"],
+                capture_output=True, text=True, timeout=12,
+            )
+            for tok in re.findall(r"\d{4,5}", r.stdout or ""):
+                dk = int(tok)
+                if 2500 < dk < 4000:
+                    c = dk / 10 - 273.15
+                    if _plausible(c):
+                        val = max(val or 0, round(c, 1))
+        except Exception:
+            pass
+
+    _WINDOWS_TEMP_CACHE.update({"t": now, "v": val})
+    return val
+
+
 def get_system_stats():
     cpu_pct = psutil.cpu_percent(interval=0.1)
     cpu_count = psutil.cpu_count()
@@ -55,6 +194,14 @@ def get_system_stats():
                     temps[name] = round(entries[0].current, 1)
     except Exception:
         pass
+
+    cpu_temp_c, gpu_temp_c = get_hwinfo_temps()
+    temp_source = "hwinfo"
+    if cpu_temp_c is None:
+        # HWiNFO 不可用 → ACPI 估算值兜底
+        cpu_temp_c = get_windows_cpu_temp()
+        gpu_temp_c = None
+        temp_source = "windows-acpi" if cpu_temp_c is not None else None
 
     return {
         "cpu": {
@@ -82,6 +229,9 @@ def get_system_stats():
             "recv_mb": round(net.bytes_recv / 1024 ** 2, 1) if net else 0,
         },
         "temps": temps,
+        "cpu_temp_c": cpu_temp_c,
+        "gpu_temp_c": gpu_temp_c,
+        "temp_source": temp_source,
         "boot_time": psutil.boot_time(),
         "uptime_seconds": round(time.time() - psutil.boot_time(), 0),
     }

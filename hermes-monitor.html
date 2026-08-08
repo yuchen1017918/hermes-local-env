@@ -166,8 +166,8 @@
     <div class="header">
       <span class="dot" id="sysDot"></span>
       <span class="title">Hermes 监控</span>
+      <span class="uptime" id="uptime" style="font-size:10px;color:var(--dim);margin-left:2px"></span>
       <span class="spacer"></span>
-      <span class="uptime" id="uptime" style="font-size:10px;color:var(--dim)"></span>
     </div>
 
     <!-- Gauges -->
@@ -236,7 +236,20 @@ let charts = null;
 // ===== Gauges =====
 function updateGauges(sys) {
   const c = sys.cpu, m = sys.memory, d = sys.disk;
-  setGauge('gCpu', c.percent, 'gCpuFreq', (c.freq_current/1000).toFixed(1)+'GHz', 'gCpuBar', c.percent);
+  setGauge('gCpu', c.percent, 'gCpuFreq', '', 'gCpuBar', c.percent);
+  // CPU 频率 + 温度（AMD Tctl 阈值：<80 绿 / 80-90 黄 / ≥90 红）
+  const cpuFreqTxt = (c.freq_current/1000).toFixed(1)+'GHz';
+  const temp = sys.cpu_temp_c;
+  let tempHtml = '<span style="color:var(--dim)">--°C</span>';
+  if (temp != null) {
+    const tc = temp>=90?'var(--red)':temp>=80?'var(--yellow)':'var(--green)';
+    tempHtml = `<span style="color:${tc}">${temp}°C</span>`;
+  }
+  $('gCpuFreq').innerHTML = cpuFreqTxt + ' · ' + tempHtml;
+  // tooltip：核显 GPU 温度参考（核显=CPU 共享热源）
+  let gpuTip = '';
+  if (sys.gpu_temp_c != null) gpuTip = ` | GPU ${sys.gpu_temp_c}°C`;
+  $('gCpu').parentElement.title = `CPU ${temp!=null?temp+'°C':'N/A'}${gpuTip}`;
   setGauge('gMem', m.percent, 'gMemTotal', m.used_gb+'/'+m.total_gb+'G', 'gMemBar', m.percent);
   setGauge('gDisk', d.percent, 'gDiskTotal', d.used_gb+'/'+d.total_gb+'G', 'gDiskBar', d.percent);
   setGauge('gSwap', m.swap_percent, 'gSwapTotal', m.swap_used_gb+'G', 'gSwapBar', m.swap_percent);

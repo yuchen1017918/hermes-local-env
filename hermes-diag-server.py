@@ -6,9 +6,23 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.parse
 from pathlib import Path
+
+# 双平台适配：Windows 侧运行（WSL 网络故障时面板仍可用）
+IS_WIN = sys.platform.startswith("win")
+WIN_USER_DIR = "C:\\Users\\77630"
+WIN_CWD = WIN_USER_DIR if IS_WIN else "/mnt/c/Users/77630"
+
+if IS_WIN:
+    # Windows 控制台/文件输出默认 GBK，强制 UTF-8 避免 emoji/中文打印崩溃
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 PORT = int(os.environ.get("DIAG_PORT", "8920"))
 BIND = os.environ.get("DIAG_BIND", "0.0.0.0")
@@ -26,10 +40,10 @@ HERMES_PORTS = {
 def run_cmd(cmd, timeout=8):
     """执行命令，返回 {ok, stdout, stderr}"""
     try:
-        # cmd.exe 从 WSL 调用需指定 Windows 合法 cwd，并用 chcp 65001 避免编码问题
+        # cmd.exe 调用需指定 Windows 合法 cwd，并用 chcp 65001 避免编码问题
         if cmd.startswith("cmd.exe"):
             r = subprocess.run(cmd, shell=True, capture_output=True, timeout=timeout,
-                               cwd="/mnt/c/Users/77630")
+                               cwd=WIN_CWD)
             stdout = r.stdout.decode("utf-8", errors="replace").strip()
             stderr = r.stderr.decode("utf-8", errors="replace").strip()
         else:
@@ -44,6 +58,16 @@ def run_cmd(cmd, timeout=8):
 
 
 def get_wsl_ip():
+    if IS_WIN:
+        # Windows 侧通过 wsl.exe 获取（WSL 故障时返回 None，不影响面板本身）
+        r = run_cmd("wsl.exe hostname -I", timeout=5)
+        if r["ok"] and r["stdout"]:
+            return r["stdout"].split()[0]
+        try:
+            txt = Path(WIN_USER_DIR + "\\wsl_ip.txt").read_text(encoding="utf-8").strip()
+            return txt or None
+        except Exception:
+            return None
     r = run_cmd("hostname -I")
     if r["ok"]:
         return r["stdout"].split()[0] if r["stdout"] else None
@@ -61,7 +85,12 @@ def check_firewall(port):
 
 
 def check_http(port):
-    r = run_cmd(f"curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout 3 http://127.0.0.1:{port}/health")
+    if IS_WIN:
+        # Windows: -o NUL 丢弃body(避免 /dev/null 解析成文件路径导致 curl rc=23)，
+        # 双引号是 cmd 的正确引号(单引号会被原样传给 curl，状态码带引号)
+        r = run_cmd(f'curl.exe -s -o NUL -w "%{{http_code}}" --connect-timeout 3 http://127.0.0.1:{port}/health')
+    else:
+        r = run_cmd(f"curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout 3 http://127.0.0.1:{port}/health")
     return r["ok"] and re.search(r"\b[23]\d\d\b", r["stdout"]) is not None
 
 
@@ -135,7 +164,10 @@ def repair_wsl_network():
 
 def start_hermes():
     """运行 WSL_Start_Hermes"""
-    r = run_cmd("bash ~/start_hermes.sh", timeout=30)
+    if IS_WIN:
+        r = run_cmd('wsl.exe bash -lc "~/start_hermes.sh"', timeout=30)
+    else:
+        r = run_cmd("bash ~/start_hermes.sh", timeout=30)
     return {"ok": r["ok"], "stdout": r["stdout"][-500:], "stderr": r["stderr"][-200:]}
 
 
@@ -154,7 +186,7 @@ def exec_terminal(term, cmd):
         # 用 PowerShell 直接调用，避免 cmd 嵌套引号问题
         r = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command", cmd],
-            capture_output=True, timeout=30, cwd="/mnt/c/Users/77630"
+            capture_output=True, timeout=30, cwd=WIN_CWD
         )
         stdout = r.stdout.decode("utf-8", errors="replace").strip()
         stderr = r.stderr.decode("utf-8", errors="replace").strip()
@@ -165,7 +197,10 @@ def exec_terminal(term, cmd):
         stderr = r["stderr"]
         ok = r["ok"]
     elif term == "wsl":
-        r = run_cmd(f'bash -c "{cmd}"', timeout=30)
+        if IS_WIN:
+            r = run_cmd(f'wsl.exe bash -c "{cmd}"', timeout=30)
+        else:
+            r = run_cmd(f'bash -c "{cmd}"', timeout=30)
         stdout = r["stdout"]
         stderr = r["stderr"]
         ok = r["ok"]
@@ -253,6 +288,12 @@ class DiagHandler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
+    if IS_WIN:
+        # 避免 UNC 当前目录问题
+        try:
+            os.chdir(WIN_CWD)
+        except Exception:
+            pass
     print(f"🔧 Hermes 端口诊断面板")
     print(f"   端口: {PORT}")
     print(f"   访问: http://localhost:{PORT}")
