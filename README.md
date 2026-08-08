@@ -1,19 +1,24 @@
-# Hermes 监控面板
+# Hermes Agent 本地环境
 
-Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
+> Hermes Agent 在 WSL2 + Windows 双平台上的完整本地运行套件：一键启动全家桶、实时监控 Hermes 进程/硬件/日志、服务故障一键诊断修复。
 
-![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/端口-8900%2C8920-green)
+![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/平台-WSL2%20%2B%20Windows-green) ![](https://img.shields.io/badge/端口-8787%2C9119%2C8900%2C8920-orange)
 
-## 面板
+## 组件总览
 
-| 面板 | 端口 | 路径 | 说明 |
+| 组件 | 端口 | 角色 | 文件 |
 |------|------|------|------|
-| 统一监控 | 8900 | `monitor/` | 左=进程仪表盘，右=Gateway+Web 日志，分屏可拖拽 |
-| 端口诊断 | 8920 | `port-diag/` | 检测/修复 WSL 端口转发 + 防火墙，一键启动 Hermes |
+| **Hermes Agent 统一监控面板** | 8900 | 监控 Hermes 进程、硬件资源（CPU/内存/磁盘/温度）与日志报错 | `hermes-monitor-server.py` + `hermes-monitor.html` |
+| **Hermes Agent 诊断面板** | 8920 | 独立 WebUI：检测 WebUI/仪表盘/统一监控是否启动，一键诊断修复 | `hermes-diag-server.py` + `hermes-diag.html` |
+| **开机自启脚本** | — | 一键启动 Hermes 全栈（WebUI + Gateway + Dashboard + 监控 + 诊断） | `start_hermes.sh` |
+| **端口转发脚本** | — | Windows 侧将 WSL2 服务端口映射到局域网，手机可访问 | `port_forward_hermes.ps1` |
+| **温度读取脚本** | — | 通过 LibreHardwareMonitor 读取 CPU/GPU 温度（HWiNFO 共享内存的备用方案） | `read_temp.ps1` + `librehardwaremonitor/` |
 
-## 统一监控 (8900)
+---
 
-### 布局
+## Hermes Agent 统一监控面板 (8900)
+
+**职责：监控 Hermes 进程的硬件占用与日志报错，一屏掌握运行健康度。**
 
 ```
 ┌──────────────────────┬──┬────────────────────────────┐
@@ -27,23 +32,28 @@ Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
 │  └─────────┘ └──────┘│  │                            │
 │                      │  │                            │
 │  PID  名称  CPU RSS   │  │                            │
-│  123  hermes 5% 200M │  │                            │
-│  456  python  2% 80M │  │                            │
-│  789  node    1% 50M │  │                            │
+│  123  hermes 5% 200M  │  │                            │
+│  456  python  2% 80M  │  │                            │
+│  789  node    1% 50M  │  │                            │
 └──────────────────────┴──┴────────────────────────────┘
         ◄── 分割线可拖动 (20%~65%) ──►
 ```
 
 ### 功能
 
-- **仪表盘**：CPU/内存/磁盘/SWAP 实时百分比 + 进度条
-- **趋势图**：CPU 和内存 60 点折线趋势（Chart.js）
-- **进程表**：Hermes 相关进程，支持排序、Kill、重新启动
-- **日志面板**：Gateway 日志 + Web UI 日志，Tab 切换
-- **日志搜索**：关键词实时过滤
-- **行数选择**：200/500/1000/2000 行
-- **自动刷新**：进程 3s、日志 2s 轮询
-- **响应式**：移动端垂直堆叠，隐藏非关键列
+**左侧 · 系统与进程**
+- 仪表盘：CPU/内存/磁盘/SWAP 实时百分比 + 进度条
+- 趋势图：CPU 和内存 60 点折线趋势（Chart.js）
+- 温度：CPU/GPU 真实温度，三级数据源自动降级
+  - ① HWiNFO 共享内存（官方 API，优先）
+  - ② HWiNFO CSV 日志（动态定位 Tctl/GPU 列）
+  - ③ Windows ACPI（估算值兜底）
+- 进程表：匹配 `hermes` / `bootstrap.py` 等 Hermes 相关进程，支持排序、Kill、重新启动
+
+**右侧 · 日志报错**
+- Gateway 日志 + Web UI 日志，Tab 切换
+- 大文件反向读取（139MB+），增量轮询，关键词实时过滤
+- 行数选择：200/500/1000/2000 行
 
 ### API
 
@@ -57,8 +67,6 @@ Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
 | `/api/kill` | GET | `pid` | `{ok, pid}` |
 | `/api/run` | GET | `cmd` | `{ok, stdout, stderr}` |
 
-`/api/tail` 支持增量读取：首次 `cursor=0` 读最后 N 行，后续传入上次的 `next_cursor` 只读新增行。
-
 `/api/all` 返回示例：
 
 ```json
@@ -69,6 +77,7 @@ Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
     "disk": {"total_gb": 256.0, "used_gb": 128.0, "percent": 50.0},
     "network": {"sent_mb": 1234.5, "recv_mb": 5678.9},
     "temps": {"coretemp": 45.0},
+    "cpu_temp_c": 58.3, "gpu_temp_c": 57.1, "temp_source": "hwinfo",
     "uptime_seconds": 86400
   },
   "processes": [
@@ -77,44 +86,69 @@ Hermes Agent 统一监控面板：系统进程 + 实时日志 + 端口诊断。
 }
 ```
 
-### 文件
-
-```
-monitor/
-├── hermes-monitor-server.py   # Python 后端（纯标准库 + psutil）
-├── hermes-monitor.html        # HTML 前端（Chart.js CDN）
-├── 图标.ico                   # Favicon
-└── 硬件进程网页图标.ico        # 备用图标
-```
-
 ---
 
-## 端口诊断 (8920)
+## Hermes Agent 诊断面板 (8920)
+
+**职责：独立 WebUI——检测 Hermes 三大服务（WebUI / Dashboard / 统一监控）是否启动，提供一键诊断与修复。**
+
+> 支持双平台运行：WSL 网络故障时，可在 **Windows 侧直接启动** 本面板（`hermes-diag-server.py` 含 Windows 适配），诊断修复不受影响。
 
 ### 功能
 
-- 实时检测 4 个端口（8787/9119/8900/8920）的 PROXY/FW/HTTP 三项状态
-- 单端口修复 / 一键修复全部
-- WSL 网络修复（netsh winsock reset + int ip reset + shutdown）
-- 任务序列：① WSL_Start_Hermes → ② Hermes_Port_Forward → ③ 验证端口
+- **端口状态检测**：实时检测 3 个核心服务端口，每项三指标
+  - `PROXY`：netsh portproxy 转发规则是否存在
+  - `FW`：Windows 防火墙放行规则是否启用
+  - `HTTP`：`/health` 探活是否返回 2xx/3xx
+
+| 端口 | 服务 |
+|------|------|
+| 8787 | WebUI |
+| 9119 | Dashboard |
+| 8900 | 统一监控 |
+
+- **一键修复全部端口**：重建 portproxy + 防火墙规则
+- **修复 WSL 网络**：`netsh winsock reset` + `netsh int ip reset all` + WSL 重启（解决 0x8007054f）
+- **一键启动 Hermes**：调用 `~/start_hermes.sh`
+- **端口转发**：调用 `port_forward_hermes.ps1`
+- **内置 Web 终端**：PowerShell / CMD / WSL 三种终端，可直接执行任意命令排查
 
 ### API
 
-| 端点 | 说明 |
-|------|------|
-| `/api/status` | 端口状态检测 |
-| `/api/repair-all` | 修复全部端口 |
-| `/api/repair-wsl` | 修复 WSL 网络错误 0x8007054f |
-| `/api/start-hermes` | 运行 `~/start_hermes.sh` |
-| `/api/port-forward` | 运行 `port_forward_hermes.ps1` |
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/status` | GET | 端口状态检测 |
+| `/api/repair-all` | GET | 修复全部端口 |
+| `/api/repair-wsl` | GET | 修复 WSL 网络错误 0x8007054f |
+| `/api/start-hermes` | GET | 运行 `~/start_hermes.sh` |
+| `/api/port-forward` | GET | 运行 `port_forward_hermes.ps1` |
+| `/api/terminal` | POST | Web 终端执行 `{term: powershell\|cmd\|wsl, cmd}` |
 
-### 文件
+---
 
-```
-port-diag/
-├── hermes-diag-server.py   # Python 后端
-└── hermes-diag.html        # HTML 前端
-```
+## 开机自启与运维脚本
+
+### `start_hermes.sh` — Hermes 全栈一键启动
+
+WSL 侧启动脚本，按序拉起完整 Hermes 环境：
+
+1. **环境加固**：加载 `~/.bash_profile` / `~/.bashrc`，补齐 PATH
+2. **等待 C 盘挂载**：自动识别 Windows 用户名，将 WSL IP 写入 `C:\Users\<user>\wsl_ip.txt`（供端口转发脚本读取）
+3. **Hermes WebUI**（8787）：后台启动 `bootstrap.py`，日志 `~/hermes_webui.log`
+4. **Hermes Gateway**：Tmux 独立会话 `hermes-gateway` 常驻，日志 `~/hermes_gateway.log`
+5. **Hermes Dashboard**（9119）：`hermes dashboard`，日志 `~/.hermes/dashboard.log`
+6. **统一监控面板**（8900）：`hermes-monitor-server.py`，日志 `~/.hermes/monitor.log`
+7. **诊断面板**（8920）：`hermes-diag-server.py`，日志 `~/.hermes/diag.log`
+
+每步均有进程存活校验与失败提示，可重复执行（已运行的服务自动跳过）。
+
+### `port_forward_hermes.ps1` — 局域网端口转发
+
+Windows 侧脚本（需管理员权限）：自动获取 WSL2 IP，为 8787/9119/8900/8920 配置 netsh portproxy + 防火墙放行，手机/局域网设备可直接访问。
+
+### `read_temp.ps1` + `librehardwaremonitor/` — 温度读取
+
+通过 LibreHardwareMonitorLib.dll 枚举 CPU/GPU 温度传感器，作为 HWiNFO 共享内存不可用时的备用温度源。
 
 ---
 
@@ -133,18 +167,44 @@ bash ~/start_hermes.sh
 powershell -ExecutionPolicy Bypass -File "C:\Users\77630\port_forward_hermes.ps1"
 ```
 
-转发端口：8787 → 9119 → 8900 → 8920
+### 访问
+
+| 服务 | 本机 | 局域网 |
+|------|------|--------|
+| WebUI | http://localhost:8787 | http://<局域网IP>:8787 |
+| Dashboard | http://localhost:9119 | http://<局域网IP>:9119 |
+| 统一监控 | http://localhost:8900 | http://<局域网IP>:8900 |
+| 诊断面板 | http://localhost:8920 | http://<局域网IP>:8920 |
+
+---
+
+## 文件结构
+
+```
+monitor/
+├── hermes-monitor-server.py   # 统一监控面板后端（Python http.server + psutil）
+├── hermes-monitor.html        # 统一监控面板前端（Chart.js CDN）
+├── hermes-diag-server.py      # 诊断修复面板后端（WSL/Windows 双平台）
+├── hermes-diag.html           # 诊断修复面板前端
+├── start_hermes.sh            # Hermes 全栈一键启动（开机自启）
+├── port_forward_hermes.ps1    # Windows 端口转发（局域网访问）
+├── read_temp.ps1              # LibreHardwareMonitor 温度读取脚本
+├── librehardwaremonitor/      # LibreHardwareMonitor 运行时依赖库
+├── 图标.ico                   # 统一监控 Favicon
+└── 硬件进程网页图标.ico        # 诊断面板 Favicon
+```
 
 ## 技术栈
 
-- **后端**：Python 3.11 + `http.server` + `psutil`
-- **前端**：原生 HTML/CSS/JS + Chart.js 4.4
-- **日志**：反向读取大文件（139MB+），支持增量轮询
-- **兼容**：WSL2 + Windows，移动端响应式
+- **后端**：Python 3.11 + `http.server` + `psutil`（零第三方依赖）
+- **前端**：原生 HTML/CSS/JS + Chart.js 4.4（CDN）
+- **日志**：大文件反向读取 + 增量轮询
+- **温度**：HWiNFO 共享内存 > HWiNFO CSV > LibreHardwareMonitor / Windows ACPI 兜底
+- **兼容**：WSL2 + Windows（诊断面板双平台运行），移动端响应式
 
 ## 相关仓库
 
 | 仓库 | 说明 |
 |------|------|
-| [Hermes_Monitoring](https://github.com/yuchen1017918/Hermes_Monitoring) | 统一监控面板 |
+| [Hermes_Monitoring](https://github.com/yuchen1017918/Hermes_Monitoring) | Hermes Agent 本地环境（统一监控 + 诊断修复 + 自启脚本） |
 | ~~[Hermes_Process](https://github.com/yuchen1017918/Hermes_Process)~~ | 已合并，不再维护 |
