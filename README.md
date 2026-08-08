@@ -2,7 +2,7 @@
 
 > Hermes Agent 在 WSL2 + Windows 双平台上的完整本地运行套件：一键启动全家桶、实时监控 Hermes 进程/硬件/日志、服务故障一键诊断修复。
 
-![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/平台-WSL2%20%2B%20Windows-green) ![](https://img.shields.io/badge/端口-8787%2C9119%2C8900%2C8921-orange)
+![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/平台-WSL2%20%2B%20Windows-green) ![](https://img.shields.io/badge/端口-8787%2C9119%2C8900%2C8921-orange) ![](https://img.shields.io/badge/License-MIT-brightgreen)
 
 ## 简介
 
@@ -23,6 +23,18 @@
 | **WSL 探测脚本** | — | 自动探测 WSL 发行版/用户名（UTF-16 编码兼容） | `detect_wsl.ps1` |
 
 > 🚀 **零配置部署**：所有脚本均无硬编码路径/用户名，通过环境变量或自动探测适配任意机器。
+
+---
+
+## 🤖 Agent 快捷部署
+
+> 把这个提示词发给任意 AI Agent（Hermes Agent / Claude Code / Codex），它会自动完成下载、安装、启动全流程：
+
+```
+https://yuchen1017918.github.io/hermes-local-env/Tutorial.md，帮我下载安装这个 hermes 环境。
+```
+
+📖 完整安装教程：[Tutorial.md](Tutorial.md)（Agent 版，含验证步骤与排障表）
 
 ---
 
@@ -316,6 +328,9 @@ hermes-local-env/
 ├── start_diag_win.vbs         # 隐藏窗口拉起诊断面板（自动探测 pythonw）
 ├── detect_wsl.ps1             # WSL 发行版/用户名探测（UTF-16 兼容）
 ├── install_tasks.ps1          # 任务计划一键导入（占位符替换 + schtasks）
+├── Tutorial.md                # Agent 安装教程（快捷部署提示词）
+├── docs/index.html            # GitHub Pages 门面页
+├── LICENSE                    # MIT License
 ├── upgrade_check.sh           # Hermes 自动升级检查（每日定时）
 ├── renew_hwinfo.ps1           # HWiNFO 共享内存 12h 限制续期（每小时）
 ├── port_forward_hermes.ps1    # Windows 端口转发（局域网访问）
