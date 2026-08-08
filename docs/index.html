@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes Local Env — Hermes Agent 本地环境套件</title>
+<meta name="description" content="Hermes Agent 本地环境套件 — WSL2 + Windows 双平台：进程/硬件实时监控、服务诊断修复、一键全栈启动、端口转发、任务计划自动运维。零硬编码，克隆即用。">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117;--card:#161b22;--border:#30363d;
+    --text:#c9d1d9;--dim:#8b949e;--accent:#58a6ff;
+    --green:#3fb950;--yellow:#d2991d;--red:#f85149;--orange:#db6d28;
+    --mono:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace
+  }
+  body{
+    font-family:-apple-system,'Segoe UI',Helvetica,Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* ===== Hero ===== */
+  .hero{background:linear-gradient(160deg,#0d1117 0%,#101826 60%,#0d1b2e 100%);border-bottom:1px solid var(--border);padding:72px 0 56px}
+  .hero .badges{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{
+    display:inline-block;font-family:var(--mono);font-size:12px;color:var(--accent);
+    border:1px solid var(--border);border-radius:20px;padding:3px 12px;background:rgba(88,166,255,.06)
+  }
+  .hero h1{font-size:40px;font-weight:800;letter-spacing:-.5px;color:#f0f6fc}
+  .hero h1 .dot{color:var(--green)}
+  .hero .sub{font-size:17px;color:var(--dim);margin-top:14px;max-width:720px}
+  .hero .links{margin-top:28px;display:flex;flex-wrap:wrap;gap:12px}
+  .btn{
+    display:inline-block;text-decoration:none;font-size:14px;font-weight:600;
+    padding:10px 22px;border-radius:8px;transition:all .15s
+  }
+  .btn-primary{background:var(--accent);color:#0d1117}
+  .btn-primary:hover{background:#79c0ff;transform:translateY(-1px)}
+  .btn-ghost{border:1px solid var(--border);color:var(--text)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-mono{font-family:var(--mono);font-size:13px}
+
+  /* ===== Section ===== */
+  section{padding:56px 0;border-bottom:1px solid var(--border)}
+  section:last-of-type{border-bottom:none}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:28px}
+  .sec-head h2{font-size:26px;font-weight:700;color:#f0f6fc}
+  .sec-head .tag{font-family:var(--mono);font-size:12px;color:var(--dim)}
+
+  /* ===== Component Cards ===== */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:20px;transition:border-color .15s,transform .15s
+  }
+  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .card .port{
+    float:right;font-family:var(--mono);font-size:11px;color:var(--green);
+    border:1px solid rgba(63,185,80,.4);border-radius:6px;padding:2px 8px;background:rgba(63,185,80,.08)
+  }
+  .card h3{font-size:16px;font-weight:700;color:#f0f6fc;margin-bottom:8px}
+  .card h3 .file{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400;margin-left:6px}
+  .card p{font-size:13px;color:var(--dim)}
+
+  /* ===== Port Table ===== */
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  th,td{padding:12px 16px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
+  th{background:#1a1f2b;color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  tr:last-child td{border-bottom:none}
+  td code,.mono{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  td .url{color:var(--green)}
+
+  /* ===== Code ===== */
+  pre{
+    background:#161b22;border:1px solid var(--border);border-radius:10px;
+    padding:18px 20px;font-family:var(--mono);font-size:13px;overflow-x:auto;color:#e6edf3
+  }
+  pre .c{color:#8b949e}
+  pre .g{color:#3fb950}
+  pre .b{color:#79c0ff}
+
+  /* ===== Feature list ===== */
+  .feat{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .feat-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;font-size:13px;color:var(--text)}
+  .feat-item b{color:var(--accent);display:block;margin-bottom:4px;font-size:14px}
+
+  /* ===== Footer ===== */
+  footer{padding:36px 0 48px;text-align:center;color:var(--dim);font-size:13px}
+  footer a{color:var(--accent);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+
+  @media(max-width:640px){
+    .hero{padding:48px 0 40px}
+    .hero h1{font-size:30px}
+    section{padding:40px 0}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Hero ===== -->
+<div class="hero">
+  <div class="wrap">
+    <div class="badges">
+      <span class="badge">Python 3.11+</span>
+      <span class="badge">WSL2 + Windows</span>
+      <span class="badge">8900 · 8921 · 8787 · 9119</span>
+      <span class="badge">Zero hardcode</span>
+    </div>
+    <h1 style="margin-top:18px">Hermes Local Env<span class="dot">.</span></h1>
+    <p class="sub">Hermes Agent 本地环境套件 —— WSL2 + Windows 双平台的一站式运维方案：进程 / 硬件实时监控、服务故障诊断修复、一键全栈启动、局域网端口转发、任务计划自动运维。<b style="color:#f0f6fc">零硬编码，克隆即用。</b></p>
+    <div class="links">
+      <a class="btn btn-primary btn-mono" href="https://github.com/yuchen1017918/hermes-local-env">GitHub ↗</a>
+      <a class="btn btn-ghost btn-mono" href="#components">组件总览</a>
+      <a class="btn btn-ghost btn-mono" href="#quickstart">快速开始</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 组件 ===== -->
+<section id="components">
+  <div class="wrap">
+    <div class="sec-head"><h2>组件总览</h2><span class="tag">6 大核心组件</span></div>
+    <div class="grid">
+      <div class="card">
+        <span class="port">:8900</span>
+        <h3>统一监控面板<span class="file">hermes-monitor-server.py</span></h3>
+        <p>双栏终端风格：系统 / 进程监控 + Gateway / WebUI 日志实时追踪。CPU、内存、磁盘、SWAP 仪表盘，60 点趋势图，HWiNFO 三级温度数据源自动降级。</p>
+      </div>
+      <div class="card">
+        <span class="port">:8921</span>
+        <h3>诊断修复面板<span class="file">hermes-diag-server.py</span></h3>
+        <p>独立运行于 Windows 侧（WSL 网络故障仍可用）：检测 WebUI / Dashboard / 监控三大服务，一键修复端口转发 + 防火墙 + WSL 网络，内置 Web 终端。</p>
+      </div>
+      <div class="card">
+        <span class="port">:8787</span>
+        <h3>Hermes WebUI<span class="file">start_hermes.sh</span></h3>
+        <p>一键启动脚本按序拉起 Hermes 全家桶：WebUI → Gateway（Tmux 常驻）→ Dashboard → 监控 → Windows 侧诊断面板，每步带进程存活校验，可重复执行。</p>
+      </div>
+      <div class="card">
+        <span class="port">:9119</span>
+        <h3>Hermes Dashboard<span class="file">start_hermes.sh</span></h3>
+        <p>Hermes 官方仪表盘，由启动脚本自动拉起。与 WebUI、统一监控共同构成完整的本地运维入口。</p>
+      </div>
+      <div class="card">
+        <span class="port">LAN</span>
+        <h3>端口转发<span class="file">port_forward_hermes.ps1</span></h3>
+        <p>Windows 侧将 WSL2 服务端口映射到局域网：自动获取 WSL IP，netsh portproxy + 防火墙放行，手机 / 局域网设备直接访问。</p>
+      </div>
+      <div class="card">
+        <span class="port">Cron</span>
+        <h3>自动运维<span class="file">upgrade_check.sh + renew_hwinfo.ps1</span></h3>
+        <p>每日自动检查 Hermes 上游更新并 pull --rebase 升级；每小时续期 HWiNFO 共享内存（绕过 12h 限制）。全部由任务计划程序统一调度。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 端口 ===== -->
+<section id="ports">
+  <div class="wrap">
+    <div class="sec-head"><h2>端口布局</h2><span class="tag">Access</span></div>
+    <table>
+      <tr><th>服务</th><th>本机</th><th>局域网</th><th>位置</th></tr>
+      <tr><td>WebUI</td><td class="url">http://localhost:8787</td><td class="url">http://&lt;IP&gt;:8787</td><td>WSL</td></tr>
+      <tr><td>Dashboard</td><td class="url">http://localhost:9119</td><td class="url">http://&lt;IP&gt;:9119</td><td>WSL</td></tr>
+      <tr><td>统一监控</td><td class="url">http://localhost:8900</td><td class="url">http://&lt;IP&gt;:8900</td><td>WSL</td></tr>
+      <tr><td>诊断面板</td><td class="url">http://localhost:8921</td><td class="url">http://&lt;IP&gt;:8921</td><td>Windows</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===== 快速开始 ===== -->
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head"><h2>快速开始</h2><span class="tag">Zero hardcode</span></div>
+    <div class="feat">
+      <div class="feat-item"><b>① 克隆</b><code class="mono">git clone git@github.com:yuchen1017918/hermes-local-env.git</code></div>
+      <div class="feat-item"><b>② 导入任务计划（管理员 PowerShell）</b><code class="mono">powershell -ExecutionPolicy Bypass -File .\install_tasks.ps1</code></div>
+      <div class="feat-item"><b>③ 一键启动</b><code class="mono">bash start_hermes.sh</code></div>
+      <div class="feat-item"><b>④ 自动探测</b>Windows 用户 / WSL 发行版 / 用户名全部自动探测，可用环境变量覆盖。</div>
+    </div>
+    <pre><span class="c"># install_tasks.ps1 自动完成：探测本机信息 → 替换 XML 占位符 → schtasks 导入</span>
+<span class="g">$</span> powershell -ExecutionPolicy Bypass -File .\install_tasks.ps1 <span class="c">-DryRun</span>
+<span class="c"># 7 个任务：WSL_Start_Hermes / HermesDiagPanel / Hermes_Port_Forward / Hermes-HWiNFO / ...</span>
+
+<span class="g">$</span> bash start_hermes.sh
+<span class="b">✅ Hermes-Agent 全部服务启动完成</span></pre>
+  </div>
+</section>
+
+<!-- ===== 特性 ===== -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head"><h2>设计特性</h2><span class="tag">Why</span></div>
+    <div class="feat">
+      <div class="feat-item"><b>零硬编码</b>所有路径 / 用户名通过环境变量或自动探测适配任意机器，克隆即用。</div>
+      <div class="feat-item"><b>WSL 网络故障兜底</b>诊断面板独立运行于 Windows 侧，WSL 网络异常时仍可诊断修复。</div>
+      <div class="feat-item"><b>温度三级数据源</b>HWiNFO 共享内存 → CSV 日志 → Windows ACPI，自动降级不中断。</div>
+      <div class="feat-item"><b>升级安全兜底</b>flock 防并发、rebase 冲突自动回滚，绝不 reset --hard。</div>
+      <div class="feat-item"><b>移动端友好</b>面板响应式布局，手机浏览器可直接查看。</div>
+      <div class="feat-item"><b>零第三方依赖</b>后端纯 Python 标准库（http.server + psutil），前端原生 + Chart.js CDN。</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><a href="https://github.com/yuchen1017918/hermes-local-env">hermes-local-env</a> · Hermes Agent 本地环境套件 · WSL2 + Windows</p>
+  </div>
+</footer>
+
+</body>
+</html>
