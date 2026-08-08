@@ -36,8 +36,8 @@ HERMES_PATTERNS = [
 
 # ========== 系统/进程监控 ==========
 
-# HWiNFO 日志（真实温度源，2s 更新一行 CSV）
-HWINFO_LOG = Path("/mnt/d/Documents/新建 文本文档.txt")
+# HWiNFO 日志（真实温度源，2s 更新一行 CSV）— 可用环境变量 HWINFO_LOG 覆盖
+HWINFO_LOG = Path(os.environ.get("HWINFO_LOG", "/mnt/d/Documents/新建 文本文档.txt"))
 
 # CPU 温度：WSL 内无 /sys/class/thermal 传感器，改从 Windows 侧读
 # 优先级：HWiNFO 共享内存（官方 API，自动可用） > HWiNFO CSV 日志 > Windows ACPI（估算值兜底）
@@ -45,7 +45,29 @@ _WINDOWS_TEMP_CACHE = {"t": 0.0, "v": None}
 WINDOWS_TEMP_CACHE_TTL = 20  # 秒，避免每次轮询都起 powershell 进程
 _HWINFO_SM_CACHE = {"t": 0.0, "v": None}
 HWINFO_SM_CACHE_TTL = 20  # 秒
-READ_SM_PS1 = r"C:\Users\77630\hwinfo\read_sm.ps1"
+
+def _detect_win_user_dir():
+    """自动探测 Windows 用户目录（无硬编码，支持环境变量覆盖）"""
+    env = os.environ.get("HERMES_WIN_USER_DIR")
+    if env:
+        return env.rstrip("\\/")
+    try:
+        up = os.environ.get("USERPROFILE")
+        if up:
+            return up
+    except Exception:
+        pass
+    try:
+        users = [d for d in Path("/mnt/c/Users").iterdir()
+                 if d.is_dir() and d.name not in ("Public", "Default", "All Users")]
+        if users:
+            return str(users[0])
+    except Exception:
+        pass
+    return r"C:\Users\<USERNAME>"
+
+WIN_USER_DIR = _detect_win_user_dir()
+READ_SM_PS1 = WIN_USER_DIR + r"\hwinfo\read_sm.ps1"
 
 
 def get_hwinfo_sm_temps():

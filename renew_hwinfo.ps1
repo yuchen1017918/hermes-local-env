@@ -1,6 +1,11 @@
 ﻿# renew_hwinfo.ps1 - HWiNFO 共享内存 12h 限制续期
 # 每小时由计划任务运行：HWiNFO 运行超 10.5h 或未运行时，重启 HWiNFO（共享内存重新计时）
+# HWiNFO 安装目录：默认 %USERPROFILE%\hwinfo，可用环境变量 HWINFO_DIR 覆盖
 $ErrorActionPreference = 'SilentlyContinue'
+
+$hwinfoDir = $env:HWINFO_DIR
+if (-not $hwinfoDir) { $hwinfoDir = Join-Path $env:USERPROFILE 'hwinfo' }
+$hwinfoExe = Join-Path $hwinfoDir 'HWiNFO64.exe'
 
 $p = Get-Process HWiNFO64 -ErrorAction SilentlyContinue
 if ($p) {
@@ -8,9 +13,9 @@ if ($p) {
     if ($uptime.TotalHours -gt 10.5) {
         Stop-Process -Name HWiNFO64 -Force
         Start-Sleep 3
-        Start-Process -FilePath 'C:\Users\77630\hwinfo\HWiNFO64.exe' -WorkingDirectory 'C:\Users\77630\hwinfo'
+        Start-Process -FilePath $hwinfoExe -WorkingDirectory $hwinfoDir
     }
 } else {
     # HWiNFO 异常退出 → 重新拉起
-    Start-Process -FilePath 'C:\Users\77630\hwinfo\HWiNFO64.exe' -WorkingDirectory 'C:\Users\77630\hwinfo'
+    Start-Process -FilePath $hwinfoExe -WorkingDirectory $hwinfoDir
 }

@@ -13,8 +13,31 @@ from pathlib import Path
 
 # 双平台适配：Windows 侧运行（WSL 网络故障时面板仍可用）
 IS_WIN = sys.platform.startswith("win")
-WIN_USER_DIR = "C:\\Users\\77630"
-WIN_CWD = WIN_USER_DIR if IS_WIN else "/mnt/c/Users/77630"
+
+def _detect_win_user_dir():
+    """自动探测 Windows 用户目录（无硬编码，支持环境变量覆盖）"""
+    # 1. 显式环境变量优先（跨机器部署时最可靠）
+    env = os.environ.get("HERMES_WIN_USER_DIR")
+    if env:
+        return env.rstrip("\\/")
+    # 2. Windows 侧：USERPROFILE 环境变量
+    if IS_WIN:
+        up = os.environ.get("USERPROFILE")
+        if up:
+            return up
+    # 3. WSL 侧：读取 /mnt/c/Users 下第一个真实用户目录
+    try:
+        users = [d for d in Path("/mnt/c/Users").iterdir()
+                 if d.is_dir() and d.name not in ("Public", "Default", "All Users")]
+        if users:
+            return str(users[0])
+    except Exception:
+        pass
+    # 4. 兜底：仅保留结构，后续功能会降级
+    return "C:\\Users\\<USERNAME>"
+
+WIN_USER_DIR = _detect_win_user_dir()
+WIN_CWD = WIN_USER_DIR if IS_WIN else "/mnt/c/Users/" + WIN_USER_DIR.rsplit("\\", 1)[-1]
 
 if IS_WIN:
     # Windows 控制台/文件输出默认 GBK，强制 UTF-8 避免 emoji/中文打印崩溃
@@ -174,7 +197,7 @@ def start_hermes():
 def run_port_forward():
     """运行 Hermes_Port_Forward（Windows PowerShell 脚本）"""
     r = run_cmd(
-        'cmd.exe /c "powershell -ExecutionPolicy Bypass -File C:\\Users\\77630\\port_forward_hermes.ps1"',
+        f'cmd.exe /c "powershell -ExecutionPolicy Bypass -File {WIN_USER_DIR}\\\\port_forward_hermes.ps1"',
         timeout=20,
     )
     return {"ok": r["ok"], "stdout": r["stdout"][-500:]}

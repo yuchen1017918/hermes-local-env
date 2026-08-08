@@ -1,6 +1,6 @@
-﻿﻿# Hermes 端口转发脚本
+﻿# Hermes 端口转发脚本
 # 将 WSL2 中的服务端口转发到 Windows，使手机可通过局域网访问
-# 管理员权限运行: powershell -ExecutionPolicy Bypass -File "C:\Users\77630\port_forward_hermes.ps1"
+# 管理员权限运行: powershell -ExecutionPolicy Bypass -File "port_forward_hermes.ps1"（本脚本所在目录）
 # 注意: 诊断面板已迁至 Windows 侧 (8921 直连，无需转发)；本脚本仅转发 WSL 内服务
 
 $ports = @(8787, 9119, 8900)  # WebUI, Dashboard, 统一监控 (WSL 内服务)

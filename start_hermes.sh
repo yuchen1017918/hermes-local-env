@@ -31,6 +31,18 @@ NC=$'\033[0m'
 
 # Hermes-Agent 一体化启动脚本（WebUI + Systemd托管网关）
 
+# ===== 路径自定位（无硬编码，仓库可放任意位置） =====
+# 脚本所在目录 = 本仓库目录（monitor/）
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Hermes-Agent 安装目录（可用环境变量覆盖）
+HERMES_AGENT_DIR="${HERMES_AGENT_DIR:-$HOME/Hermes-Agent}"
+# Windows 用户目录（可用环境变量覆盖；默认取 /mnt/c/Users 下第一个真实用户）
+WIN_USER_DIR="${HERMES_WIN_USER_DIR:-}"
+if [ -z "$WIN_USER_DIR" ] && [ -d /mnt/c/Users ]; then
+    _win_user=$(ls /mnt/c/Users | grep -v -E '^(Public|Default|All Users)$' | head -n1)
+    [ -n "$_win_user" ] && WIN_USER_DIR="/mnt/c/Users/$_win_user"
+fi
+
 ########################### 单实例检测（只检测一遍） ###########################
 # 检测是否已有启动脚本在运行，避免重复启动冲突
 LOCK_FILE=/tmp/start_hermes.lock
@@ -94,24 +106,24 @@ while [ ! -d /mnt/c/Users ]; do
 done
 
 # 自动获取Windows用户名称、WSL本机IP
-if [ -d /mnt/c/Users ]; then
-    WIN_USER=$(ls /mnt/c/Users | grep -v Public | head -n1)
+if [ -n "$WIN_USER_DIR" ]; then
+    WIN_USER=$(basename "$WIN_USER_DIR")
     WSL_IP=$(hostname -I | awk '{print $1}')
     echo "${CYAN}----------------------------------------${NC}"
     echo "${CYAN}当前WSL本机IP: $WSL_IP${NC}"
-    echo "${CYAN}Windows登录用户目录: $WIN_USER${NC}"
+    echo "${CYAN}Windows登录用户目录: $WIN_USER_DIR${NC}"
     echo "${CYAN}----------------------------------------${NC}"
 
     # 将WSL IP写入Windows本地文件，供宿主机端口转发脚本读取
-    IP_TARGET="/mnt/c/Users/${WIN_USER}/wsl_ip.txt"
+    IP_TARGET="${WIN_USER_DIR}/wsl_ip.txt"
     echo "$WSL_IP" > "$IP_TARGET"
     echo "${GREEN}✅ WSL IP已写入Windows文件: $IP_TARGET${NC}"
 fi
 
 ########################### 3. 启动 Hermes WebUI 后台进程 ###########################
 # 切换WebUI项目目录
-cd ~/Hermes-Agent/hermes-webui || {
-    echo "${RED}❌ WebUI目录不存在 ~/Hermes-Agent/hermes-webui，终止启动${NC}"
+cd "$HERMES_AGENT_DIR/hermes-webui" || {
+    echo "${RED}❌ WebUI目录不存在 $HERMES_AGENT_DIR/hermes-webui，终止启动${NC}"
     exit 1
 }
 
@@ -134,7 +146,7 @@ if pgrep -f "bootstrap.py" > /dev/null; then
     echo "${CYAN}WebUI日志路径: ~/hermes_webui.log${NC}"
 else
     echo "${RED}❌ Hermes WebUI启动失败，请手动执行排查命令：${NC}"
-    echo "cd ~/Hermes-Agent/hermes-webui && python3 -u bootstrap.py --host 0.0.0.0 --no-browser"
+    echo "cd $HERMES_AGENT_DIR/hermes-webui && python3 -u bootstrap.py --host 0.0.0.0 --no-browser"
     exit 2
 fi
 
@@ -205,7 +217,7 @@ MONITOR_PORT=8900
 if lsof -ti:$MONITOR_PORT > /dev/null 2>&1; then
     echo "${GREEN}✅ 硬件监控已在运行 (端口 $MONITOR_PORT)${NC}"
 else
-    nohup python3 ~/workspace/monitor/hermes-monitor-server.py > ~/.hermes/monitor.log 2>&1 &
+    nohup python3 "$REPO_DIR/hermes-monitor-server.py" > ~/.hermes/monitor.log 2>&1 &
     sleep 1
     if lsof -ti:$MONITOR_PORT > /dev/null 2>&1; then
         echo "${GREEN}✅ Hermes 硬件进程监控启动成功${NC}"
@@ -229,13 +241,15 @@ if diag_ok; then
     echo "${GREEN}✅ 端口诊断面板已在运行 (端口 $DIAG_PORT，Windows侧)${NC}"
 else
     echo "启动 Windows 侧诊断面板..."
-    cmd.exe /c "cd /d C:\Users\77630 && start_diag_win.bat" >/dev/null 2>&1
+    _win_home="${WIN_USER_DIR#/mnt/c}"
+    _win_home="C:${_win_home//\//\\}"
+    cmd.exe /c "cd /d ${_win_home} && start_diag_win.bat" >/dev/null 2>&1
     sleep 2
     if diag_ok; then
         echo "${GREEN}✅ Hermes 端口诊断面板启动成功（Windows侧，WSL网络故障时仍可用）${NC}"
         echo "${CYAN}访问地址: http://localhost:$DIAG_PORT${NC}"
     else
-        echo "${YELLOW}⚠️ 端口诊断面板启动失败，查看日志: C:\\Users\\77630\\diag_win.log${NC}"
+        echo "${YELLOW}⚠️ 端口诊断面板启动失败，查看日志: ${_win_home}\\diag_win.log${NC}"
     fi
 fi
 

@@ -11,7 +11,8 @@ LOCK_FILE=/tmp/hermes_upgrade_check.lock
 exec 9>"$LOCK_FILE"
 flock -n 9 || { echo "⚠️ 升级检查已在运行，跳过本次"; exit 0; }
 
-AGENT_REPO=/home/yuchen_wang/Hermes-Agent
+# Hermes-Agent 安装目录（无硬编码，默认 $HOME/Hermes-Agent，可用环境变量覆盖）
+AGENT_REPO="${HERMES_AGENT_DIR:-$HOME/Hermes-Agent}"
 SSH_URL_A=git@github.com:NousResearch/hermes-agent.git
 SSH_URL_W=git@github.com:nesquena/hermes-webui.git
 GIT_TIMEOUT=60  # git 命令超时（秒），国内网络保护
