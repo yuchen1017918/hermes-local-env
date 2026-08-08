@@ -32,8 +32,8 @@
 
 ```bash
 # WSL 内任意位置（建议 ~/workspace/）
-git clone https://github.com/yuchen1017918/Hermes_Monitoring.git
-cd Hermes_Monitoring
+git clone https://github.com/yuchen1017918/hermes-local-env.git
+cd hermes-local-env
 ```
 
 ### 2. 一键导入任务计划（Windows 侧，管理员 PowerShell）
@@ -306,7 +306,7 @@ Windows 计划任务（`Hermes-HWiNFO-Renew`，每小时运行），解决 HWiNF
 ## 文件结构
 
 ```
-Hermes_Monitoring/
+hermes-local-env/
 ├── hermes-monitor-server.py   # 统一监控面板后端（Python http.server + psutil）
 ├── hermes-monitor.html        # 统一监控面板前端（Chart.js CDN）
 ├── hermes-diag-server.py      # 诊断修复面板后端（Windows 侧 8921，双平台适配）
@@ -347,5 +347,5 @@ Hermes_Monitoring/
 
 | 仓库 | 说明 |
 |------|------|
-| [Hermes_Monitoring](https://github.com/yuchen1017918/Hermes_Monitoring) | Hermes Agent 本地环境（统一监控 + 诊断修复 + 自启脚本 + 任务计划） |
-| ~~[Hermes_Process](https://github.com/yuchen1017918/Hermes_Process)~~ | 已合并，不再维护 |
+| [hermes-local-env](https://github.com/yuchen1017918/hermes-local-env) | 本仓库（原 Hermes_Monitoring 迁移更名）：Hermes Agent 本地环境套件（统一监控 + 诊断修复 + 自启脚本 + 任务计划） |
+| [vibe-skill-ops](https://github.com/yuchen1017918/vibe-skill-ops) | Vibe Coding skill 体系（三层路由、知识萃取、成本治理） |
