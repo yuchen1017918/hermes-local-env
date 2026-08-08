@@ -2,7 +2,7 @@
 
 > Hermes Agent 在 WSL2 + Windows 双平台上的完整本地运行套件：一键启动全家桶、实时监控 Hermes 进程/硬件/日志、服务故障一键诊断修复。
 
-![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/平台-WSL2%20%2B%20Windows-green) ![](https://img.shields.io/badge/端口-8787%2C9119%2C8900%2C8920-orange)
+![](https://img.shields.io/badge/Python-3.11-blue) ![](https://img.shields.io/badge/平台-WSL2%20%2B%20Windows-green) ![](https://img.shields.io/badge/端口-8787%2C9119%2C8900%2C8920%2C8921-orange)
 
 ## 组件总览
 
@@ -13,6 +13,9 @@
 | **开机自启脚本** | — | 一键启动 Hermes 全栈（WebUI + Gateway + Dashboard + 监控 + 诊断） | `start_hermes.sh` |
 | **端口转发脚本** | — | Windows 侧将 WSL2 服务端口映射到局域网，手机可访问 | `port_forward_hermes.ps1` |
 | **温度读取脚本** | — | 通过 LibreHardwareMonitor 读取 CPU/GPU 温度（HWiNFO 共享内存的备用方案） | `read_temp.ps1` + `librehardwaremonitor/` |
+| **自动升级检查** | — | cron 定时检测 HermesAgent/hermes-webui 上游更新并自动 pull --rebase | `upgrade_check.sh` |
+| **Windows 诊断启动器** | 8921 | Windows 侧开机自启诊断面板（WSL 网络故障时兜底） | `start_diag_win.bat` |
+| **HWiNFO 续期脚本** | — | 定时重启 HWiNFO64 续期共享内存（绕过免费版 12h 限制） | `renew_hwinfo.ps1` |
 
 ---
 
@@ -150,6 +153,36 @@ Windows 侧脚本（需管理员权限）：自动获取 WSL2 IP，为 8787/9119
 
 通过 LibreHardwareMonitorLib.dll 枚举 CPU/GPU 温度传感器，作为 HWiNFO 共享内存不可用时的备用温度源。
 
+### `upgrade_check.sh` — Hermes 自动升级检查
+
+cron 定时任务（no_agent 模式，每日 7:30 / 20:30 由 Hermes cron 调度），检测 HermesAgent 及其 hermes-webui 子模块的上游更新并自动升级：
+
+1. **拉取上游**：`git fetch origin main/master`（60s 超时保护，国内网络友好）
+2. **计算差距**：`rev-list --count` 统计 behind/ahead
+3. **有更新则升级**：`git pull --rebase` 保留本地提交
+4. **安全兜底**：`flock` 防并发执行；rebase 冲突自动 `abort` 回滚，绝不 `reset --hard`
+5. **推送通知**：stdout 非空 → 消息推送；无更新 → 静默不打扰
+
+### `start_diag_win.bat` — Windows 侧诊断面板启动器
+
+Windows 开机自启脚本（配合任务计划程序），在 **WSL 网络故障时仍可用诊断面板**：
+
+1. 检测端口 8921 是否已在监听，已运行则跳过
+2. 等待 WSL 文件系统就绪（UNC 路径可达，最长 30s）
+3. 通过 `wscript` 拉起 `start_diag_win.vbs` → 在 Windows 侧启动 `hermes-diag-server.py`（端口 8921）
+4. 运行日志写入 `C:\Users\77630\diag_launcher.log`
+
+> 与 WSL 侧诊断面板（8920）端口区分：Windows 侧独立实例用 8921，两者互不干扰。
+
+### `renew_hwinfo.ps1` — HWiNFO 共享内存续期
+
+Windows 计划任务（每小时运行），解决 HWiNFO 免费版 **共享内存 12 小时过期限制**：
+
+- HWiNFO64 运行超过 10.5h → 强制重启（共享内存计时重新开始）
+- HWiNFO64 未运行（异常退出）→ 自动重新拉起
+
+> 配合统一监控面板温度源：HWiNFO 共享内存持续可用，面板才能拿到真实 CPU/GPU 温度。
+
 ---
 
 ## 部署
@@ -158,6 +191,13 @@ Windows 侧脚本（需管理员权限）：自动获取 WSL2 IP，为 8787/9119
 
 ```bash
 bash ~/start_hermes.sh
+```
+
+### Windows 侧诊断面板（WSL 故障兜底）
+
+```bat
+:: 双击或任务计划程序开机自启
+C:\Users\77630\start_diag_win.bat   :: 启动后访问 http://localhost:8921
 ```
 
 ### Windows 端口转发
@@ -175,6 +215,7 @@ powershell -ExecutionPolicy Bypass -File "C:\Users\77630\port_forward_hermes.ps1
 | Dashboard | http://localhost:9119 | http://<局域网IP>:9119 |
 | 统一监控 | http://localhost:8900 | http://<局域网IP>:8900 |
 | 诊断面板 | http://localhost:8920 | http://<局域网IP>:8920 |
+| 诊断面板 (Windows侧) | http://localhost:8921 | http://<局域网IP>:8921 |
 
 ---
 
@@ -187,6 +228,9 @@ monitor/
 ├── hermes-diag-server.py      # 诊断修复面板后端（WSL/Windows 双平台）
 ├── hermes-diag.html           # 诊断修复面板前端
 ├── start_hermes.sh            # Hermes 全栈一键启动（开机自启）
+├── start_diag_win.bat         # Windows 侧诊断面板启动器（8921，WSL 故障兜底）
+├── upgrade_check.sh           # Hermes 自动升级检查（cron 定时）
+├── renew_hwinfo.ps1           # HWiNFO 共享内存 12h 限制续期（计划任务）
 ├── port_forward_hermes.ps1    # Windows 端口转发（局域网访问）
 ├── read_temp.ps1              # LibreHardwareMonitor 温度读取脚本
 ├── librehardwaremonitor/      # LibreHardwareMonitor 运行时依赖库
